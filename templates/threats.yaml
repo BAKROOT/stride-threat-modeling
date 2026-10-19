@@ -1,0 +1,68 @@
+# Threat register template. Copy to threat-model/threats.yaml in your repository.
+# Validate: python3 tools/validate_threats.py threat-model/threats.yaml --coverage
+# Schema:   templates/threats.schema.json
+#
+# Rules enforced by the validator:
+#   risk = likelihood x impact; band follows the calibrated 5x5 scale
+#   (20-25 Critical, 12-19 High, 6-11 Medium, 1-5 Low)
+#   threats with risk >= 12 cannot stay "open"
+#   accepted risks need approved_by, rationale and a future expiry date
+
+model:
+  id: TM-001
+  name: <System name>
+  version: "0.1"
+  owner: <owning-team>
+  facilitator: <security facilitator>
+  last_reviewed: 2026-10-19
+  risk_tier: High            # Critical | High | Medium | Low
+
+elements:
+  # type: external_entity | process | data_store | data_flow
+  - {id: E1, name: "User", type: external_entity, boundary: TB1}
+  - {id: P1, name: "Web application", type: process, boundary: TB2}
+  - {id: DS1, name: "Application database", type: data_store, boundary: TB3}
+  - {id: DS2, name: "Audit log", type: data_store, boundary: TB3, log_store: true}
+  - {id: F1, name: "Login and API requests (HTTPS)", type: data_flow, from: E1, to: P1}
+  - {id: F2, name: "Queries (TLS)", type: data_flow, from: P1, to: DS1}
+  - {id: F3, name: "Audit events", type: data_flow, from: P1, to: DS2}
+
+threats:
+  - id: T-01
+    title: <Short threat title>
+    elements: [F1, P1]
+    stride: [S]               # any of S T R I D E
+    actor: <Threat actor>
+    # [Actor] can [action] [asset/element] via [attack vector], resulting in [impact].
+    description: >-
+      <Actor> can <action> <asset> via <vector>, resulting in <impact>.
+    existing_controls: []
+    likelihood: 3             # 1 Rare .. 5 Almost certain
+    impact: 3                 # 1 Negligible .. 5 Severe
+    risk: 9
+    band: Medium
+    response: mitigate        # mitigate | eliminate | transfer | accept
+    status: open              # open | mitigation-in-progress | mitigated | verified | accepted | transferred | not-applicable
+    mitigations:
+      - id: M-01a
+        description: <Specific, testable control>
+        ticket: <TICKET-123>
+        verification: <Test, check or review that proves it works>
+        # verification_path: tests/security/test_example.py   # checked with --check-paths
+    references: {cwe: [], capec: [], attack: []}
+    owner: <owning-team>
+
+  # Example of a formally accepted risk:
+  # - id: T-02
+  #   ...
+  #   response: accept
+  #   status: accepted
+  #   acceptance:
+  #     approved_by: <Name, role with authority over the business consequence>
+  #     rationale: <Why the residual risk is acceptable>
+  #     compensating_controls: [<control>]
+  #     expires: 2027-04-30
+
+coverage_notes:
+  # Record "None found" decisions so an empty matrix cell always means "not examined".
+  - {element: DS1, stride: D, note: "None found (managed service with PITR)"}

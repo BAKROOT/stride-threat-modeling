@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BAKROOT/stride-threat-modeling/templates/threats.schema.json",
+  "title": "STRIDE threat model register",
+  "description": "Machine-readable threat model: model metadata, DFD element inventory and threat register. Semantic rules (risk arithmetic, references, acceptance expiry) are enforced by tools/validate_threats.py.",
+  "type": "object",
+  "required": ["model", "elements", "threats"],
+  "additionalProperties": false,
+  "properties": {
+    "model": {
+      "type": "object",
+      "required": ["id", "name", "owner", "last_reviewed"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^TM-[0-9A-Za-z-]+$"},
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string"},
+        "owner": {"type": "string", "minLength": 1},
+        "facilitator": {"type": "string"},
+        "last_reviewed": {"type": "string", "format": "date"},
+        "risk_tier": {"enum": ["Critical", "High", "Medium", "Low"]},
+        "scale": {"type": "string"}
+      }
+    },
+    "elements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^(E|P|DS|F|TB)[0-9]+[a-z]?$"},
+          "name": {"type": "string", "minLength": 1},
+          "type": {"enum": ["external_entity", "process", "data_store", "data_flow"]},
+          "boundary": {"type": "string"},
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "log_store": {"type": "boolean"}
+        }
+      }
+    },
+    "threats": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/threat"}
+    },
+    "coverage_notes": {
+      "description": "Explicit 'None found' / 'n/a' decisions for coverage-matrix cells that have no threat, so empty cells mean nobody looked.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["element", "stride", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "element": {"type": "string"},
+          "stride": {"enum": ["S", "T", "R", "I", "D", "E"]},
+          "note": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "threat": {
+      "type": "object",
+      "required": ["id", "title", "elements", "stride", "description", "likelihood", "impact", "risk", "band", "response", "status", "owner"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^T-[0-9]{2,}$"},
+        "title": {"type": "string", "minLength": 1},
+        "elements": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "stride": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["S", "T", "R", "I", "D", "E"]}
+        },
+        "actor": {"type": "string"},
+        "description": {"type": "string", "minLength": 1},
+        "existing_controls": {"type": "array", "items": {"type": "string"}},
+        "likelihood": {"type": "integer", "minimum": 1, "maximum": 5},
+        "impact": {"type": "integer", "minimum": 1, "maximum": 5},
+        "risk": {"type": "integer", "minimum": 1, "maximum": 25},
+        "band": {"enum": ["Critical", "High", "Medium", "Low"]},
+        "response": {"enum": ["mitigate", "eliminate", "transfer", "accept"]},
+        "status": {
+          "enum": ["open", "mitigation-in-progress", "mitigated", "verified", "accepted", "transferred", "not-applicable"]
+        },
+        "mitigations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "description", "verification"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^M-[0-9]{2,}[a-z]?$"},
+              "description": {"type": "string", "minLength": 1},
+              "ticket": {"type": "string"},
+              "verification": {"type": "string", "minLength": 1},
+              "verification_path": {"type": "string"}
+            }
+          }
+        },
+        "acceptance": {
+          "type": "object",
+          "required": ["approved_by", "rationale", "expires"],
+          "properties": {
+            "approved_by": {"type": "string", "minLength": 1},
+            "rationale": {"type": "string", "minLength": 1},
+            "compensating_controls": {"type": "array", "items": {"type": "string"}},
+            "expires": {"type": "string", "format": "date"}
+          }
+        },
+        "references": {
+          "type": "object",
+          "properties": {
+            "cwe": {"type": "array", "items": {"type": "string", "pattern": "^CWE-[0-9]+$"}},
+            "capec": {"type": "array", "items": {"type": "string", "pattern": "^CAPEC-[0-9]+$"}},
+            "attack": {"type": "array", "items": {"type": "string", "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"}},
+            "owasp": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "owner": {"type": "string", "minLength": 1},
+        "last_reviewed": {"type": "string", "format": "date"}
+      }
+    }
+  }
+}

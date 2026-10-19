@@ -1,0 +1,2 @@
+ID,Title,Elements,STRIDE,Actor,Description,Existing Controls,Likelihood,Impact,Risk,Band,Response,Mitigations,Verification,Ticket,Owner,Status,CWE,CAPEC,ATTACK,Last Reviewed
+T-01,Credential stuffing on customer login,"E1;P2",S,Opportunistic attacker,"Automated login attempts with breached credentials lead to account takeover","Basic IP rate limiting",3,3,9,Medium,Mitigate,"Breached password screening; per-account rate limits; passkeys","Load test with credential stuffing simulation",SEC-101,identity-team,Open,CWE-307,CAPEC-600,T1110.004,2026-10-19
