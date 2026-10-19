@@ -1,10 +1,10 @@
-# STRIDE Threat Modeling: From Zero to Hero
+# STRIDE Threat Modeling: A Practitioner's Guide
 
 [![Validate threat models](https://github.com/BAKROOT/stride-threat-modeling/actions/workflows/validate-threat-models.yml/badge.svg)](https://github.com/BAKROOT/stride-threat-modeling/actions/workflows/validate-threat-models.yml)
 [![Docs: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey.svg)](LICENSE)
 [![Code: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE-CODE)
 
-> A practitioner's guide to finding design-level security flaws before attackers do, using STRIDE, data flow diagrams, and a repeatable engineering process.
+> Finding design-level security flaws before attackers do, using STRIDE, data flow diagrams, and a repeatable engineering process.
 
 **Author:** Bilal Ahmad Kamal, PhD Cybersecurity Scholar
 **Audience:** Security engineers, architects, penetration testers, AppSec and product security teams, security researchers, and developers who want to think like attackers at design time.
@@ -18,10 +18,10 @@ This guide is structured as a learning path. Read it front to back the first tim
 
 | Level | You will be able to | Read |
 |---|---|---|
-| **Zero** | Explain what threat modeling is, why it matters, and what each STRIDE letter means | Part I |
+| **Foundation** | Explain what threat modeling is, why it matters, and what each STRIDE letter means | Part I |
 | **Practitioner** | Draw a correct data flow diagram, run STRIDE-per-element, rate risk, and produce a threat register a team can act on | Part II and Part III |
 | **Expert** | Adapt STRIDE to cloud, AI/LLM, CPS/OT and supply chain systems, automate it in CI/CD, and combine it with ATT&CK, CAPEC, attack trees and privacy methods | Part IV |
-| **Hero** | Build and scale a threat modeling program, measure it, and use threat models to drive pentest scoping, detection engineering and architecture decisions | Part V |
+| **Program Lead** | Build and scale a threat modeling program, measure it, and use threat models to drive pentest scoping, detection engineering and architecture decisions | Part V |
 
 Appendices contain a question bank, templates, a mitigation catalog, a glossary and references that you can copy straight into your own repositories.
 
@@ -72,7 +72,7 @@ cp templates/threats.yaml ../my-service/threat-model/threats.yaml
   - [12. STRIDE Across Domains](#12-stride-across-domains)
   - [13. Extensions and Complementary Methods](#13-extensions-and-complementary-methods)
   - [14. Threat Modeling as Code and in DevSecOps](#14-threat-modeling-as-code-and-in-devsecops)
-- [Part V: Hero Level](#part-v-hero-level)
+- [Part V: Program Leadership](#part-v-program-leadership)
   - [15. Building and Scaling a Program](#15-building-and-scaling-a-program)
   - [16. Using Threat Models Offensively and Defensively](#16-using-threat-models-offensively-and-defensively)
   - [17. Anti-Patterns and Hard-Won Lessons](#17-anti-patterns-and-hard-won-lessons)
@@ -1373,7 +1373,7 @@ Guidelines that hold up in practice:
 - **Measure it.** Compare AI-assisted sessions with unaided ones on threats found, false positives, and threats later confirmed by testing.
 
 ---
-# Part V: Hero Level
+# Part V: Program Leadership
 
 ## 15. Building and Scaling a Program
 
@@ -1796,7 +1796,7 @@ This guide and the templates are licensed under the [Creative Commons Attributio
 
 The scripts in `tools/` and `examples/` are licensed under the [MIT License](LICENSE-CODE).
 
-**Suggested citation:** Bilal Ahmad Kamal, *STRIDE Threat Modeling: From Zero to Hero*, 2026. <https://github.com/BAKROOT/stride-threat-modeling>
+**Suggested citation:** Bilal Ahmad Kamal, *STRIDE Threat Modeling: A Practitioner's Guide*, 2026. <https://github.com/BAKROOT/stride-threat-modeling>
 
 ---
 
