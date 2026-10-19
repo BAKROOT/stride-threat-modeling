@@ -24,7 +24,7 @@ every threat in it has appeared in real systems.
 | [`orbitpay_tm.py`](orbitpay_tm.py) | Threat model as code with [OWASP pytm](https://github.com/OWASP/pytm): webhook and checkout path |
 | [`pytm_report_template.md`](pytm_report_template.md) | Report template for pytm |
 | [`diagrams/pytm-dfd.png`](diagrams/pytm-dfd.png) | DFD rendered by pytm + Graphviz |
-| [`generated/pytm-report.md`](generated/pytm-report.md) | Raw pytm rule-engine output (uncurated, see below) |
+| [`generated/pytm-report.md`](generated/pytm-report.md) | Raw pytm rule-engine output: 110 machine-generated candidates to curate, not a threat list ([Section 14.1](../../README.md#141-tooling-landscape)) |
 
 ## Reproduce
 
