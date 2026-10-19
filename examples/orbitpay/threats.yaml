@@ -1,0 +1,691 @@
+# OrbitPay threat register (TM-001), machine-readable form of README Section 11.
+# Validate:   python3 tools/validate_threats.py examples/orbitpay/threats.yaml --coverage
+# Export CSV: python3 tools/yaml_to_csv.py examples/orbitpay/threats.yaml > examples/orbitpay/threat-register.csv
+#
+# Ratings use the calibrated 5x5 scale (README Section 8.2) and reflect current
+# controls before the proposed mitigations. OrbitPay is fictional.
+
+model:
+  id: TM-001
+  name: OrbitPay checkout and payments orchestration
+  version: "1.0"
+  owner: payments-team
+  facilitator: security-team
+  last_reviewed: 2026-10-19
+  risk_tier: Critical
+  scale: calibrated-5x5
+
+elements:
+  # External entities
+  - {id: E1, name: Customer browser or app, type: external_entity, boundary: TB1}
+  - {id: E2, name: Merchant users and systems, type: external_entity, boundary: TB1}
+  - {id: E3, name: Payment Service Provider, type: external_entity, boundary: TB4}
+  - {id: E4, name: Email provider, type: external_entity, boundary: TB4}
+  # Processes
+  - {id: P1, name: API Gateway and WAF, type: process, boundary: TB2}
+  - {id: P2, name: "Auth Service (OIDC)", type: process, boundary: TB3}
+  - {id: P3, name: Payments Service, type: process, boundary: TB3}
+  - {id: P4, name: Webhook Handler, type: process, boundary: TB2}
+  - {id: P5, name: Notification Worker, type: process, boundary: TB3}
+  - {id: P6, name: Merchant Admin API, type: process, boundary: TB3}
+  # Data stores
+  - {id: DS1, name: Payments DB, type: data_store, boundary: TB5}
+  - {id: DS2, name: Event Queue, type: data_store, boundary: TB5}
+  - {id: DS3, name: Audit Log Store, type: data_store, boundary: TB5, log_store: true}
+  - {id: DS4, name: Secrets Manager, type: data_store, boundary: TB5}
+  # Data flows
+  - {id: F1, name: "Checkout (HTTPS, JWT)", type: data_flow, from: E1, to: P1}
+  - {id: F2, name: Token validation, type: data_flow, from: P1, to: P2}
+  - {id: F3, name: Checkout calls, type: data_flow, from: P1, to: P3}
+  - {id: F4, name: "Admin actions (HTTPS, SSO + MFA)", type: data_flow, from: E2, to: P1}
+  - {id: F5, name: Admin calls, type: data_flow, from: P1, to: P6}
+  - {id: F6, name: Read and write orders, type: data_flow, from: P3, to: DS1}
+  - {id: F7, name: "Read orders, issue refunds", type: data_flow, from: P6, to: DS1}
+  - {id: F8, name: "Charge and refund (HTTPS, API key)", type: data_flow, from: P3, to: E3}
+  - {id: F9, name: "Payment webhook (HTTPS)", type: data_flow, from: E3, to: P4}
+  - {id: F10, name: Payment status update, type: data_flow, from: P4, to: P3}
+  - {id: F11, name: Publish payment events, type: data_flow, from: P3, to: DS2}
+  - {id: F12, name: Consume events, type: data_flow, from: DS2, to: P5}
+  - {id: F13, name: "Receipt emails (API)", type: data_flow, from: P5, to: E4}
+  - {id: F14a, name: "Audit events (Payments)", type: data_flow, from: P3, to: DS3}
+  - {id: F14b, name: "Audit events (Admin API)", type: data_flow, from: P6, to: DS3}
+  - {id: F14c, name: "Audit events (Webhook)", type: data_flow, from: P4, to: DS3}
+  - {id: F15, name: "PSP key, DB credentials", type: data_flow, from: DS4, to: P3}
+  - {id: F16, name: "Merchant callback (HTTPS)", type: data_flow, from: P5, to: E2}
+
+threats:
+  - id: T-01
+    title: Credential stuffing leads to customer account takeover
+    elements: [E1, P2]
+    stride: [S]
+    actor: Opportunistic external attacker
+    description: >-
+      Credential stuffing against customer login leads to account takeover and
+      use of saved payment tokens.
+    existing_controls: [Basic IP rate limiting at P1]
+    likelihood: 3
+    impact: 3
+    risk: 9
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-01a
+        description: Breached-password screening at registration and login
+        verification: Unit test against a known-breached password corpus
+      - id: M-01b
+        description: Per-account and per-IP rate limiting plus bot detection
+        verification: Load test with credential-stuffing simulation
+      - id: M-01c
+        description: Offer passkeys/MFA; step-up auth on new device before paying with saved tokens
+        verification: Integration test for step-up on unrecognised device
+    references: {cwe: [CWE-307], capec: [CAPEC-600], attack: [T1110.004]}
+    owner: identity-team
+
+  - id: T-02
+    title: Forged PSP webhook marks unpaid orders as paid
+    elements: [F9, P4]
+    stride: [S, T]
+    actor: Opportunistic external attacker
+    description: >-
+      An attacker forges PSP webhook calls to P4. Only an IP allow-list protects
+      the endpoint and signatures are not verified, so orders are marked paid
+      without payment.
+    existing_controls: [IP allow-list for PSP ranges]
+    likelihood: 4
+    impact: 5
+    risk: 20
+    band: Critical
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-02a
+        description: Verify PSP HMAC signature over raw body with 5-minute timestamp tolerance; dedupe by event ID
+        ticket: PAY-1412
+        verification: Integration test - unsigned, mis-signed, stale and replayed webhooks return 401 and change no state
+      - id: M-02b
+        description: Verify payment status and amount via PSP API before fulfilment ("verify by fetch")
+        ticket: PAY-1413
+        verification: Integration test - fulfilment blocked when PSP fetch disagrees with webhook
+      - id: M-02c
+        description: Keep IP allow-list as defense in depth only
+        verification: Configuration review
+    references: {cwe: [CWE-345, CWE-347, CWE-294], capec: [CAPEC-151], attack: []}
+    owner: payments-team
+
+  - id: T-03
+    title: JWT validation accepts forged tokens
+    elements: [P2]
+    stride: [S]
+    actor: Opportunistic external attacker
+    description: >-
+      JWT validation accepts algorithm switching or omits aud/iss checks,
+      allowing forged tokens.
+    existing_controls: [Library-default JWT validation]
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-03a
+        description: Pin asymmetric algorithm; validate iss, aud, exp, nbf
+        verification: CI negative tests for alg:none and HS/RS confusion
+    references: {cwe: [CWE-347, CWE-287], capec: [CAPEC-196], attack: [T1606]}
+    owner: identity-team
+
+  - id: T-04
+    title: Client-supplied amount used to create PSP charge
+    elements: [F1, P3]
+    stride: [T]
+    actor: Organized fraudster
+    description: >-
+      Client submits a manipulated amount or currency in the checkout request;
+      P3 creates the PSP charge for the client-supplied amount.
+    existing_controls: []
+    likelihood: 4
+    impact: 4
+    risk: 16
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-04a
+        description: Compute amount server-side from cart and catalog; ignore client totals
+        ticket: PAY-1420
+        verification: Abuse-case test with modified totals
+      - id: M-04b
+        description: Reconcile captured amount against order total before fulfilment
+        ticket: PAY-1421
+        verification: Reconciliation alert fires in staging on mismatch
+    references: {cwe: [CWE-602, CWE-472], capec: [], attack: []}
+    owner: payments-team
+
+  - id: T-05
+    title: Refund race condition exceeds captured amount
+    elements: [P3, P6]
+    stride: [T]
+    actor: Malicious or compromised merchant
+    description: >-
+      Concurrent refund requests (race condition) produce refunds exceeding the
+      captured amount.
+    existing_controls: []
+    likelihood: 2
+    impact: 4
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-05a
+        description: Idempotency keys and transactional row locking on refunds
+        verification: Concurrency test issuing parallel refunds
+      - id: M-05b
+        description: DB constraint refunded_total <= captured_total
+        verification: Migration test asserting constraint exists
+    references: {cwe: [CWE-362], capec: [CAPEC-26], attack: []}
+    owner: payments-team
+
+  - id: T-06
+    title: SQL injection in merchant order search
+    elements: [P6, DS1]
+    stride: [T]
+    actor: Malicious or compromised merchant
+    description: >-
+      SQL injection in the merchant order search modifies or exfiltrates records.
+    existing_controls: [WAF managed rules at P1]
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-06a
+        description: Parameterized queries only; SAST rule blocking string-built SQL
+        verification: SAST rule in CI
+      - id: M-06b
+        description: DB role for P6 without DDL or cross-tenant access
+        verification: Database grants review
+    references: {cwe: [CWE-89], capec: [CAPEC-66], attack: [T1190]}
+    owner: merchant-team
+
+  - id: T-07
+    title: Fake payment events injected into the event queue
+    elements: [DS2]
+    stride: [S, T]
+    actor: Supply chain attacker
+    description: >-
+      A compromised internal workload publishes fake payment.succeeded events,
+      triggering receipts and merchant fulfilment callbacks.
+    existing_controls: [Broker authentication]
+    likelihood: 2
+    impact: 4
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-07a
+        description: Per-topic publish permission restricted to P3's identity; schema validation
+        verification: Broker ACL policy test
+      - id: M-07b
+        description: Consumers treat events as notifications and re-read authoritative state from DS1
+        verification: Integration test with forged event
+    references: {cwe: [CWE-345], capec: [], attack: [T1565]}
+    owner: platform-team
+
+  - id: T-08
+    title: Fraudulent merchant refunds cannot be attributed
+    elements: [E2, P6]
+    stride: [R]
+    actor: Malicious or compromised merchant
+    description: >-
+      A merchant user issues fraudulent refunds and denies it; refunds are logged
+      under P6's service identity, not the human actor.
+    existing_controls: [Service-level audit events]
+    likelihood: 3
+    impact: 4
+    risk: 12
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-08a
+        description: Propagate end-user identity (on-behalf-of token) to P3; audit actor, IP, session, device
+        ticket: MER-310
+        verification: Audit log review of refund events
+      - id: M-08b
+        description: Dual approval above a refund threshold; notify merchant owners of refunds
+        ticket: MER-311
+        verification: Integration test for dual-approval workflow
+    references: {cwe: [CWE-778, CWE-223], capec: [], attack: []}
+    owner: merchant-team
+
+  - id: T-09
+    title: Audit logs deleted or altered to hide fraud
+    elements: [DS3]
+    stride: [R, T]
+    actor: Insider (engineer, support)
+    description: >-
+      An attacker with P3's cloud role deletes or alters audit logs to hide fraud.
+    existing_controls: [Object storage versioning]
+    likelihood: 2
+    impact: 4
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-09a
+        description: Producers have append-only permission; replicate to a separate security account with object lock (WORM)
+        verification: Policy-as-code check on bucket policy and object lock
+      - id: M-09b
+        description: Hash-chained log batches; alert on ingestion gaps
+        verification: Detection rule test
+    references: {cwe: [CWE-732], capec: [CAPEC-268], attack: [T1070, T1562.008]}
+    owner: security-team
+
+  - id: T-10
+    title: Log injection forges or corrupts audit entries
+    elements: [F14a, F14b, F14c, DS3]
+    stride: [R]
+    actor: Opportunistic external attacker
+    description: >-
+      Customer-controlled fields containing newline characters forge or corrupt
+      audit entries.
+    existing_controls: []
+    likelihood: 3
+    impact: 2
+    risk: 6
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-10a
+        description: Structured JSON logging with encoding; never concatenate raw input into log lines
+        verification: Unit test with CRLF payloads
+    references: {cwe: [CWE-117], capec: [CAPEC-93], attack: []}
+    owner: platform-team
+
+  - id: T-11
+    title: Cross-tenant BOLA on merchant transactions
+    elements: [P6, DS1]
+    stride: [I, E]
+    actor: Malicious or compromised merchant
+    description: >-
+      Merchant A reads merchant B's transactions by changing merchantId in
+      /merchants/{merchantId}/transactions.
+    existing_controls: [UI only shows own tenant]
+    likelihood: 4
+    impact: 4
+    risk: 16
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-11a
+        description: Derive tenant from the token, not the path; centralized tenant-scoping middleware
+        ticket: MER-301
+        verification: Automated cross-tenant authorization test suite in CI
+      - id: M-11b
+        description: PostgreSQL row-level security as a second layer
+        ticket: MER-302
+        verification: Database test asserting RLS policies
+    references: {cwe: [CWE-639], capec: [], attack: [], owasp: [API1:2023]}
+    owner: merchant-team
+
+  - id: T-12
+    title: PSP API key leaks
+    elements: [DS4, F15, P3]
+    stride: [I]
+    actor: Supply chain attacker
+    description: >-
+      The PSP API key leaks through logs, error dumps, environment inspection,
+      or the CI pipeline.
+    existing_controls: [Key stored in secrets manager]
+    likelihood: 3
+    impact: 5
+    risk: 15
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-12a
+        description: Fetch at runtime from DS4; restrict PSP key scopes and source IPs at the PSP
+        ticket: PLT-220
+        verification: PSP console configuration review
+      - id: M-12b
+        description: Secret scanning in repo and CI; log redaction filters
+        ticket: PLT-221
+        verification: Secret scanning enabled in CI; redaction unit test
+      - id: M-12c
+        description: Rotation runbook and quarterly rotation
+        verification: Rotation drill record
+    references: {cwe: [CWE-532, CWE-522], capec: [], attack: [T1552]}
+    owner: platform-team
+
+  - id: T-13
+    title: Production snapshots expose PII in non-production
+    elements: [DS1]
+    stride: [I]
+    actor: Insider (engineer, support)
+    description: >-
+      Database snapshots are shared to, or restored in, non-production accounts,
+      exposing customer PII.
+    existing_controls: []
+    likelihood: 2
+    impact: 4
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-13a
+        description: Masked synthetic data only in non-prod; snapshots encrypted with a key unavailable to non-prod
+        verification: KMS key policy review
+      - id: M-13b
+        description: Preventive guardrail policy blocking cross-account snapshot sharing
+        verification: Policy-as-code test
+    references: {cwe: [CWE-200], capec: [], attack: [T1537]}
+    owner: platform-team
+
+  - id: T-14
+    title: Stack traces returned to clients
+    elements: [P1]
+    stride: [I]
+    actor: Opportunistic external attacker
+    description: >-
+      Stack traces and internal hostnames from P3 are returned to clients
+      through the gateway.
+    existing_controls: []
+    likelihood: 4
+    impact: 2
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-14a
+        description: Gateway maps upstream errors to generic responses with a correlation ID
+        verification: DAST check for verbose errors
+    references: {cwe: [CWE-209], capec: [CAPEC-54], attack: []}
+    owner: platform-team
+
+  - id: T-15
+    title: SSRF via merchant callback URL
+    elements: [P5, F16]
+    stride: [I, E]
+    actor: Malicious or compromised merchant
+    description: >-
+      A merchant sets their callback URL to an internal address or the cloud
+      metadata endpoint; P5 fetches it and leaks credentials or reaches internal APIs.
+    existing_controls: [URL scheme validation]
+    likelihood: 3
+    impact: 5
+    risk: 15
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-15a
+        description: Egress proxy blocking private, link-local and metadata ranges after DNS resolution
+        ticket: PLT-230
+        verification: SSRF test suite against egress proxy (incl. DNS rebinding)
+      - id: M-15b
+        description: Enforce IMDSv2 with hop limit 1; isolate P5 network segment
+        ticket: PLT-231
+        verification: Infrastructure policy check
+    references: {cwe: [CWE-918], capec: [CAPEC-664], attack: [T1552.005]}
+    owner: platform-team
+
+  - id: T-16
+    title: Card-testing bots abuse checkout
+    elements: [F1, P1, P3]
+    stride: [D]
+    actor: Organized fraudster
+    description: >-
+      Card-testing bots use checkout to validate stolen cards at high volume,
+      causing PSP fees, PSP account suspension risk, and degraded checkout.
+    existing_controls: [Basic IP rate limiting at P1]
+    likelihood: 4
+    impact: 4
+    risk: 16
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-16a
+        description: Velocity limits per account, device, IP and card fingerprint; bot management
+        ticket: FRD-101
+        verification: Load test with synthetic card-testing patterns
+      - id: M-16b
+        description: PSP fraud scoring; alerting on authorization-decline ratio
+        ticket: FRD-102
+        verification: Decline-ratio alert test
+    references: {cwe: [CWE-799], capec: [], attack: [], owasp: [OAT-001]}
+    owner: fraud-team
+
+  - id: T-17
+    title: Webhook endpoint flood or replay storm
+    elements: [F9, P4]
+    stride: [D]
+    actor: Opportunistic external attacker
+    description: >-
+      The webhook endpoint is flooded or bombarded with replays, backing up processing.
+    existing_controls: [Serverless concurrency limit]
+    likelihood: 3
+    impact: 3
+    risk: 9
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-17a
+        description: Reject on signature failure first; rate limit; enqueue and process asynchronously; idempotent handlers
+        verification: Load test with replayed and unsigned webhooks
+    references: {cwe: [CWE-770], capec: [CAPEC-125], attack: [T1499]}
+    owner: payments-team
+
+  - id: T-18
+    title: PSP latency exhausts Payments Service workers
+    elements: [P3, F8, E3]
+    stride: [D]
+    actor: Accidental (dependency failure)
+    description: >-
+      PSP latency or outage exhausts P3 worker threads because charge calls are
+      synchronous with no timeouts.
+    existing_controls: []
+    likelihood: 3
+    impact: 3
+    risk: 9
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-18a
+        description: Timeouts, circuit breaker and bulkhead for PSP calls; retry with idempotency keys
+        verification: Fault-injection test with slow PSP stub
+      - id: M-18b
+        description: Graceful "payment pending" UX
+        verification: End-to-end test
+    references: {cwe: [CWE-400, CWE-1088], capec: [], attack: []}
+    owner: payments-team
+
+  - id: T-19
+    title: Ransomware or destructive attacker deletes DB and backups
+    elements: [DS1]
+    stride: [D]
+    actor: Targeted / APT
+    description: >-
+      A destructive attacker or ransomware deletes the database and its backups.
+    existing_controls: [Automated backups in same account]
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-19a
+        description: Deletion protection; point-in-time recovery; immutable backups in a separate account
+        verification: Policy-as-code check
+      - id: M-19b
+        description: Quarterly restore drills with measured RTO/RPO
+        verification: Restore drill record
+    references: {cwe: [], capec: [], attack: [T1485, T1486, T1490]}
+    owner: platform-team
+
+  - id: T-20
+    title: Support role can call refund endpoints
+    elements: [P6]
+    stride: [E]
+    actor: Malicious or compromised merchant
+    description: >-
+      Merchant "support" role can call refund endpoints because function-level
+      authorization is enforced only in the UI.
+    existing_controls: [UI hides refund button for support role]
+    likelihood: 3
+    impact: 4
+    risk: 12
+    band: High
+    response: mitigate
+    status: mitigation-in-progress
+    mitigations:
+      - id: M-20a
+        description: Server-side policy engine with deny-by-default; permission matrix per endpoint under version control
+        ticket: MER-320
+        verification: Authorization tests for every role-endpoint pair
+    references: {cwe: [CWE-862, CWE-602], capec: [CAPEC-1], attack: [], owasp: [API5:2023]}
+    owner: merchant-team
+
+  - id: T-21
+    title: Payments Service compromise leads to cluster takeover
+    elements: [P3]
+    stride: [E]
+    actor: Targeted / APT
+    description: >-
+      Compromise of P3 leads to cluster takeover via a privileged pod and an
+      automounted service account token with broad RBAC.
+    existing_controls: []
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-21a
+        description: Restricted Pod Security Standard; non-root, read-only root filesystem; disable token automount
+        verification: Admission policy test
+      - id: M-21b
+        description: Minimal RBAC; default-deny network policies
+        verification: RBAC escalation-path analysis
+    references: {cwe: [CWE-250, CWE-269], capec: [], attack: [T1611, T1528]}
+    owner: platform-team
+
+  - id: T-22
+    title: Malicious dependency exfiltrates PSP key
+    elements: [P3]
+    stride: [T, I]
+    actor: Supply chain attacker
+    description: >-
+      A malicious dependency introduced via CI exfiltrates the PSP key at runtime.
+      Detailed in TM-002.
+    existing_controls: [Lockfiles]
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-22a
+        description: Hash pinning; dependency review; signed artifacts with provenance
+        verification: SLSA provenance verification at deploy
+      - id: M-22b
+        description: Egress allow-list for P3 (PSP and DB only)
+        verification: Network policy test
+    references: {cwe: [CWE-829], capec: [CAPEC-538], attack: [T1195.001]}
+    owner: platform-team
+
+  - id: T-23
+    title: Friendly-fraud chargeback without sufficient evidence
+    elements: [E1]
+    stride: [R]
+    actor: Customer (friendly fraud)
+    description: >-
+      A customer disputes a legitimate purchase and OrbitPay has insufficient
+      evidence for the chargeback.
+    existing_controls: [Order records]
+    likelihood: 4
+    impact: 2
+    risk: 8
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-23a
+        description: Retain 3-D Secure results, device and session evidence, delivery confirmation and receipts linked to the order
+        verification: Chargeback evidence pack review
+    references: {cwe: [CWE-778], capec: [], attack: []}
+    owner: fraud-team
+
+  - id: T-24
+    title: TLS verification disabled in PSP client
+    elements: [F8]
+    stride: [T, I]
+    actor: Targeted / APT
+    description: >-
+      TLS certificate verification is disabled in the PSP HTTP client (copied
+      from a test configuration), enabling interception of charge requests and the API key.
+    existing_controls: []
+    likelihood: 2
+    impact: 5
+    risk: 10
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-24a
+        description: Enforce verification in a shared HTTP client library; lint rule banning verification bypass
+        verification: Lint rule in CI
+      - id: M-24b
+        description: Egress through a TLS-validating proxy
+        verification: Network test with invalid certificate
+    references: {cwe: [CWE-295], capec: [CAPEC-94], attack: [T1557]}
+    owner: platform-team
+
+  - id: T-25
+    title: Customer PII over-collected in audit logs
+    elements: [DS3]
+    stride: [I]
+    actor: Insider (engineer, support)
+    description: >-
+      Found by the coverage check (README Section 11.7). Audit logs contain
+      customer email addresses and IPs readable by a broad engineering group.
+    existing_controls: []
+    likelihood: 3
+    impact: 3
+    risk: 9
+    band: Medium
+    response: mitigate
+    status: open
+    mitigations:
+      - id: M-25a
+        description: Field-level minimization of audit events; restrict read access to DS3
+        verification: Log schema review; IAM access review
+    references: {cwe: [CWE-532], capec: [], attack: []}
+    owner: security-team
+
+# Explicit decisions for coverage cells without a threat (README Section 11.7).
+# Cells still shown as **?** by --coverage are the next iteration's work list.
+coverage_notes:
+  - {element: P4, stride: R, note: "via DS3 (T-09)"}
+  - {element: P4, stride: I, note: "None found"}
+  - {element: P4, stride: E, note: "None found"}
+  - {element: P6, stride: S, note: "via P2 (T-03)"}
+  - {element: P6, stride: D, note: "None found (P1 rate limits; accepted)"}
+  - {element: DS3, stride: D, note: "None found"}
+  - {element: F9, stride: I, note: "None found (TLS; contains no PII)"}
